@@ -1,0 +1,12 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.local-secrets/
+.env.*
+!.env.example
+*.log
+*.sqlite*
+.coverage
+htmlcov/

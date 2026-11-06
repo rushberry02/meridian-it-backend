@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg[binary]
+pydantic-settings
+python-dotenv
+alembic
+email-validator
+mcp>=1.28,<2
+httpx>=0.28,<1
