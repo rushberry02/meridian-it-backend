@@ -19,7 +19,8 @@ WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint
 
 async def _request(method: str, path: str, *, params=None, body=None):
     settings = get_settings()
-    headers = {"X-API-Key": os.getenv("MERIDIAN_EMPLOYEE_KEY") or settings.support_api_key.get_secret_value()}
+    credential = os.getenv("MERIDIAN_EMPLOYEE_KEY")
+    headers = ({"X-API-Key": credential} if credential and credential.startswith("meridian_employee.") else {"Authorization": f"Bearer {credential}"}) if credential else {"X-API-Key": settings.support_api_key.get_secret_value()}
     try:
         async with httpx.AsyncClient(base_url=settings.backend_url, headers=headers, timeout=15, trust_env=False, follow_redirects=False) as client:
             response = await client.request(method, path, params=params, json=body)
@@ -83,7 +84,7 @@ async def get_ticket_history(ticket_id: RecordId, offset: Offset = 0, limit: Lim
 async def create_ticket(title: Annotated[str, Field(min_length=1, max_length=200)], description: Annotated[str, Field(min_length=1, max_length=10000)], employee_id: RecordId | None = None, device_id: RecordId | None = None, priority: TicketPriority = "medium") -> dict:
     """Create an open ticket ONLY when the user requests creation. Verify IDs and do not invent missing details or retry a write blindly."""
     if not os.getenv("MERIDIAN_EMPLOYEE_KEY"):
-        raise ToolError("Enter your employee access key in the chat sidebar to create a ticket.")
+        raise ToolError("Sign in to the Copilot before creating a ticket.")
     identity = await _request("GET", "/identity")
     if identity["role"] != "employee":
         raise ToolError("An employee-specific access key is required for self-service tickets.")
@@ -103,7 +104,7 @@ async def get_current_employee() -> dict:
 async def close_ticket(ticket_id: RecordId) -> dict:
     """Close your own ticket ONLY when you explicitly confirm the issue is resolved. Backend requires employee credentials and reporter ownership. Open, in_progress, and resolved tickets may all be closed after the employee confirms the fix. Cannot resolve or reopen tickets."""
     if not os.getenv("MERIDIAN_EMPLOYEE_KEY"):
-        raise ToolError("Enter your employee access key in the chat sidebar to close your ticket.")
+        raise ToolError("Sign in to the Copilot before closing a ticket.")
     return await _request("POST", f"/tickets/{ticket_id}/close")
 
 

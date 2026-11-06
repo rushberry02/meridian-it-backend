@@ -1,3 +1,4 @@
+from app.config import get_settings
 """Device API integration tests with PostgreSQL and transaction rollback."""
 import unittest
 from uuid import uuid4
@@ -18,7 +19,7 @@ class DeviceApiTests(unittest.TestCase):
             with Session(bind=self.connection, join_transaction_mode="create_savepoint") as session:
                 yield session
         app.dependency_overrides[get_db] = override
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": get_settings().admin_api_key.get_secret_value()})
 
     def tearDown(self):
         self.client.close()

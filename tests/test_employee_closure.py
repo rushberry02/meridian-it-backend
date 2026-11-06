@@ -15,7 +15,7 @@ class EmployeeClosureTests(unittest.TestCase):
             with Session(bind=self.connection, join_transaction_mode="create_savepoint") as session:
                 yield session
         app.dependency_overrides[get_db] = override
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": get_settings().admin_api_key.get_secret_value()})
         settings = get_settings()
         self.admin = {"X-API-Key": settings.admin_api_key.get_secret_value()}
         self.support = {"X-API-Key": settings.support_api_key.get_secret_value()}
@@ -83,8 +83,8 @@ class EmployeeClosureTests(unittest.TestCase):
                     self.assertEqual(self.client.patch(endpoint, json={"status": "resolved"}, headers=self.admin).status_code, 200)
                 history = self.client.get(endpoint + "/history").json()
                 for headers in (self.other_headers, self.support):
-                    self.assertEqual(self.client.post(endpoint + "/close", headers=headers).status_code, 403)
-                    self.assertEqual(self.client.patch(endpoint, json={"status": "closed"}, headers=headers).status_code, 403)
+                    self.assertEqual(self.client.post(endpoint + "/close", headers=headers).status_code, 404 if headers == self.other_headers else 403)
+                    self.assertEqual(self.client.patch(endpoint, json={"status": "closed"}, headers=headers).status_code, 404 if headers == self.other_headers else 403)
                 self.assertEqual(self.client.get(endpoint + "/history").json(), history)
                 self.assertEqual(self.client.get(endpoint).json()["status"], initial_status)
 

@@ -14,9 +14,9 @@ TicketId = Annotated[int, Path(gt=0, le=2147483647)]
 FilterId = Annotated[int | None, Query(gt=0, le=2147483647)]
 
 
-def _get_or_404(db, ticket_id):
+def _get_or_404(db, ticket_id, operator):
     ticket = service.get_ticket(db, ticket_id)
-    if ticket is None:
+    if ticket is None or (operator.role == "employee" and ticket.employee_id != operator.employee_id):
         raise HTTPException(status_code=404, detail="Ticket not found")
     return ticket
 
@@ -42,6 +42,7 @@ def create_ticket(data: TicketCreate, db: Database, operator: CurrentOperator):
 @router.get("", response_model=list[TicketRead])
 def list_tickets(
     db: Database,
+    operator: CurrentOperator,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     employee_id: FilterId = None,
@@ -49,36 +50,40 @@ def list_tickets(
     status: TicketStatus | None = None,
     priority: TicketPriority | None = None,
 ):
+    if operator.role == "employee":
+        if employee_id is not None and employee_id != operator.employee_id:
+            raise HTTPException(status_code=403, detail="Cannot list another employee's tickets")
+        employee_id = operator.employee_id
     return service.list_tickets(db, offset, limit, employee_id=employee_id, device_id=device_id, status=status, priority=priority)
 
 
 @router.get("/{ticket_id}", response_model=TicketRead)
-def get_ticket(ticket_id: TicketId, db: Database):
-    return _get_or_404(db, ticket_id)
+def get_ticket(ticket_id: TicketId, db: Database, operator: CurrentOperator):
+    return _get_or_404(db, ticket_id, operator)
 
 
 @router.patch("/{ticket_id}", response_model=TicketRead)
 def update_ticket(ticket_id: TicketId, data: TicketUpdate, db: Database, operator: CurrentOperator):
-    return _save(service.update_ticket, db, _get_or_404(db, ticket_id), data, operator)
+    return _save(service.update_ticket, db, _get_or_404(db, ticket_id, operator), data, operator)
 
 
 @router.delete("/{ticket_id}", status_code=204)
 def delete_ticket(ticket_id: TicketId, db: Database, operator: Admin):
-    service.delete_ticket(db, _get_or_404(db, ticket_id), operator)
+    service.delete_ticket(db, _get_or_404(db, ticket_id, operator), operator)
     return Response(status_code=204)
 
 
 @router.get("/{ticket_id}/history", response_model=list[TicketHistoryRead])
-def ticket_history(ticket_id: TicketId, db: Database, offset: Annotated[int, Query(ge=0)] = 0, limit: Annotated[int, Query(ge=1, le=100)] = 20):
-    _get_or_404(db, ticket_id)
+def ticket_history(ticket_id: TicketId, db: Database, operator: CurrentOperator, offset: Annotated[int, Query(ge=0)] = 0, limit: Annotated[int, Query(ge=1, le=100)] = 20):
+    _get_or_404(db, ticket_id, operator)
     return service.get_status_history(db, ticket_id, offset, limit)
 
 
 @router.patch("/{ticket_id}/admin", response_model=TicketRead)
 def admin_update_ticket(ticket_id: TicketId, data: TicketUpdate, db: Database, operator: Admin):
-    return _save(service.update_ticket, db, _get_or_404(db, ticket_id), data, operator, True)
+    return _save(service.update_ticket, db, _get_or_404(db, ticket_id, operator), data, operator, True)
 
 
 @router.post("/{ticket_id}/close", response_model=TicketRead)
 def close_own_ticket(ticket_id: TicketId, db: Database, operator: CurrentOperator):
-    return _save(service.close_ticket, db, _get_or_404(db, ticket_id), operator)
+    return _save(service.close_ticket, db, _get_or_404(db, ticket_id, operator), operator)

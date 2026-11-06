@@ -8,12 +8,14 @@ from dataclasses import dataclass
 from secrets import compare_digest
 from typing import Annotated
 from fastapi import Depends, HTTPException
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from app.config import get_settings
 from app.database import get_db
-from app.models import Employee
+from app.models import Employee, User
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+bearer = HTTPBearer(auto_error=False)
 api_key = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -21,9 +23,15 @@ api_key = APIKeyHeader(name="X-API-Key", auto_error=False)
 class Operator:
     role: str
     employee_id: int | None = None
+    user_id: int | None = None
+    session_id: str | None = None
 
 
-def get_operator(key: Annotated[str | None, Depends(api_key)], db: Annotated[Session, Depends(get_db)]) -> Operator:
+def get_operator(key: Annotated[str | None, Depends(api_key)], db: Annotated[Session, Depends(get_db)], credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> Operator:
+    if credentials is not None:
+        from app.services.auth import verify_access
+        user, employee, session = verify_access(db, credentials.credentials)
+        return Operator(user.role, employee.id, user.id, session.id)
     settings = get_settings()
     if key:
         for role, expected in (("admin", settings.admin_api_key), ("support", settings.support_api_key)):
@@ -45,6 +53,8 @@ def get_operator(key: Annotated[str | None, Depends(api_key)], db: Annotated[Ses
                     raise ValueError("Invalid or expired credential")
                 employee = db.get(Employee, employee_id)
                 if employee is not None and employee.is_active:
+                    if db.scalar(select(User.id).where(User.employee_id == employee_id)) is not None:
+                        raise HTTPException(status_code=401, detail="Password login required for this account")
                     return Operator("employee", employee_id)
             except (ValueError, TypeError, KeyError):
                 pass

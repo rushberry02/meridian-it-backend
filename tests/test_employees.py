@@ -1,3 +1,4 @@
+from app.config import get_settings
 """PostgreSQL integration tests; each test rolls back all employee changes."""
 import unittest
 from uuid import uuid4
@@ -21,7 +22,7 @@ class EmployeeApiTests(unittest.TestCase):
                 yield session
 
         app.dependency_overrides[get_db] = database_override
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": get_settings().admin_api_key.get_secret_value()})
 
     def tearDown(self):
         self.client.close()

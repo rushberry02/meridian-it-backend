@@ -43,6 +43,7 @@ def main():
         "DB_USER": "meridian_app", "DB_PASSWORD": app_password,
         "SUPPORT_API_KEY": secrets.token_urlsafe(36),
         "ADMIN_API_KEY": secrets.token_urlsafe(36),
+        "AUTH_JWT_SECRET": secrets.token_urlsafe(48),
     }.items():
         set_key(str(env_path), key, value)
     with psycopg.connect(

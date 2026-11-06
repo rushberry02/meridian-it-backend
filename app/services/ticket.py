@@ -109,7 +109,7 @@ def update_ticket(db: Session, ticket: Ticket, data: TicketUpdate, operator: Ope
     for field, value in values.items():
         setattr(ticket, field, value)
     if new_status != old_status:
-        db.add(TicketStatusHistory(ticket_id=ticket.id, old_status=old_status, new_status=new_status, actor_role=operator.role, reason=reason))
+        db.add(TicketStatusHistory(ticket_id=ticket.id, old_status=old_status, new_status=new_status, actor_role=operator.role, actor_employee_id=operator.employee_id, reason=reason))
     return _save(db, ticket)
 
 

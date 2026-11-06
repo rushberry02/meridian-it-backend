@@ -84,17 +84,54 @@ actor ID when known, reason, and timestamp. Existing pre-history tickets have a
 truthful migration baseline; earlier transitions are not invented. Direct SQL
 writes bypass workflow services and must not be used by integrations.
 
-## Employee credentials
+## Employee login
 
-1. In Swagger, Authorize using ADMIN_API_KEY from the local .env.
-2. POST /employees/{employee_id}/access-key for the intended active employee.
-3. Deliver the returned api_key privately to that employee.
-4. Enter it in the Copilot sidebar's Employee access key field.
+Login users are linked one-to-one to existing employees by users.employee_id;
+email/name/department remain on employees. Passwords use Argon2id. An admin
+provisions the account once; employees then use only work email and password.
 
-The signed bearer key expires after seven days. Deactivating the employee
-invalidates access. Rotating ADMIN_API_KEY invalidates all employee keys.
-Individual key revocation, password login, and account recovery are not yet
-implemented. Do not enter keys as chat messages.
+To create/reset a login locally, run the hidden password prompt:
+
+```bat
+.venv\Scripts\python scripts\set_user_password.py --email rd@example.com --role employee
+```
+
+Use an existing employee email. For an admin account, use --role admin. Omit
+--role when resetting a password to preserve the account's current role. The
+command never takes a password as a command-line argument. Passwords must be
+12-128 characters. No real employee password is set automatically by migrations.
+
+Admins may alternatively POST /auth/users with employee_id, password, and role,
+or PUT /auth/users/{employee_id}/password. Both require admin authentication.
+Employees cannot register themselves as admins or reset another user's password.
+
+| Route | Behavior |
+| --- | --- |
+| POST /auth/login | Email/password -> access JWT and rotating refresh credential |
+| POST /auth/refresh | Rotate refresh credential; preserve session identity |
+| POST /auth/logout | Revoke the complete login session; idempotent |
+| GET /auth/me | Authenticated user's employee profile and role |
+
+AUTH_JWT_SECRET is a random server-side secret in .env, generated during setup.
+JWTs last 15 minutes; refresh sessions last seven days by default. Both durations
+are configurable with ACCESS_TOKEN_MINUTES and REFRESH_SESSION_DAYS. JWTs verify
+HS256, issuer, audience, expiry, subject and session claims. Each authenticated
+request also checks the database user/session/employee state, so logout, password
+reset, expired sessions, and disabled accounts reject previously issued JWTs.
+Only hashes of refresh credentials are stored. Rotation is atomic; replay of an
+already-used refresh credential revokes its entire session family. Five failed
+password attempts lock the account for fifteen minutes. Login errors do not
+reveal whether an account exists.
+
+The Streamlit UI keeps tokens in server-side session state and refreshes them
+automatically. Passwords and tokens do not go to the model or checkpoints. A
+browser refresh/reopened tab may require another normal login; persistent browser
+remember-me cookies are not implemented. Logout revokes server access and clears
+the chat state. API clients send Authorization: Bearer <access JWT>.
+
+Legacy employee keys are refused once a password account exists, and no new
+legacy key can be issued for such an employee. Support/admin service keys remain
+available for internal setup/administration; employees never need to see them.
 
 ## MCP integration
 
@@ -105,8 +142,8 @@ rather than importing the Copilot or accessing its database.
 Ten selected tools: get_employee, list_employees, get_device, list_devices,
 get_ticket, list_tickets, get_ticket_history, get_current_employee, create_ticket,
 and close_ticket. No generic status update, delete, arbitrary HTTP, or SQL tool
-is exposed. Self-service writes require employee credentials; legacy reads use
-the support service key when no employee key is supplied.
+is exposed. Self-service requests carry the authenticated employee JWT privately through
+MCP. Internal service calls can still use the support key.
 
 Run Meridian on port 8000 and the Copilot API on port 8001. Integration and chat
 startup instructions are in the separate Copilot repository:
@@ -130,7 +167,26 @@ audit attribution cannot silently be destroyed.
 
 ## Development boundaries
 
-Ticket mutation permissions and reporter closure ownership are enforced. The
-older read and employee/device CRUD APIs retain their local development access
-behavior; full user authentication/authorization across those APIs is unfinished.
-This is a local development backend, not a production-hardened deployment.
+Employee/device reads and all ticket records/history require authentication and
+are scoped to the employee. Employee/device mutations and general ticket status
+changes require an admin. Internal admin/support service keys retain trusted
+operational access. This is a local development deployment; production requires
+HTTPS, managed secrets, broader request-rate controls, monitoring, and an account
+recovery process. SSO/MFA and persistent browser remember-me cookies are not part
+of this implementation.
+
+## Admin dashboard APIs
+
+The Copilot admin workspace uses protected GET /admin/summary and paginated
+/admin/tickets, /admin/employees, /admin/devices endpoints. Queues include total,
+offset, limit and items, plus search and resource-specific filters. Every route
+requires an admin role verified by the backend. Employee JWTs are rejected.
+Mutations use the existing protected resource endpoints and ticket workflow
+services; authenticated admin status events include actor_employee_id.
+Dashboard/chat management does not require another PostgreSQL migration.
+
+The login endpoint accepts optional role=employee or role=admin to support the
+Copilot's two login choices. The role must match the stored account after valid
+password verification; a mismatch returns 403 without issuing tokens. This field
+never assigns or changes account privileges. Omitting it preserves API client
+compatibility. No schema migration is required for the login-role selector.

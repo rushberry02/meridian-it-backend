@@ -20,7 +20,7 @@ class WorkflowTests(unittest.TestCase):
         settings = get_settings()
         self.support = {"X-API-Key": settings.support_api_key.get_secret_value()}
         self.admin = {"X-API-Key": settings.admin_api_key.get_secret_value()}
-        self.client = TestClient(app)
+        self.client = TestClient(app, headers={"X-API-Key": get_settings().admin_api_key.get_secret_value()})
         response = self.client.post("/employees", json={"full_name": "Workflow Test", "email": f"workflow-{uuid4().hex}@example.com"})
         self.employee_id = response.json()["id"]
         self.payload = {"title": "Workflow test", "description": "Details", "employee_id": self.employee_id}
@@ -37,7 +37,7 @@ class WorkflowTests(unittest.TestCase):
         return response.json()["id"]
 
     def test_keys_and_admin_boundary(self):
-        for headers in ({}, {"X-API-Key": "wrong"}):
+        for headers in ({"X-API-Key": ""}, {"X-API-Key": "wrong"}):
             self.assertEqual(self.client.post("/tickets", json=self.payload, headers=headers).status_code, 401)
         ticket_id = self.create()
         endpoint = f"/tickets/{ticket_id}"

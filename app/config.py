@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    auth_jwt_secret: SecretStr = SecretStr("")
+    access_token_minutes: int = Field(default=15, ge=1, le=60)
+    refresh_session_days: int = Field(default=7, ge=1, le=30)
 
     support_api_key: SecretStr = SecretStr("")
     admin_api_key: SecretStr = SecretStr("")
